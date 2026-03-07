@@ -80,9 +80,9 @@ var registry = []*Service{
 		Name:            "ralph-logs",
 		PortEnvVar:      "RALPH_LOGS_PORT",
 		HostEnvVar:      "RALPH_LOGS_HOST",
-		Command:         "ralph-logs",
+		Command:         "/home/ai4mgreenly/projects/ralph-logs/ralph-logs",
 		ShutdownTimeout: 10 * time.Second,
-		Noop:            true,
+		Noop:            false,
 	},
 	{
 		Name:            "ralph-counts",
@@ -135,6 +135,10 @@ func logsDir() string {
 
 func buildCmd(svc *Service) *exec.Cmd {
 	parts := strings.Fields(svc.Command)
+	logDir := logsDir()
+	if svc.Name == "ralph-logs" {
+		parts = append(parts, filepath.Join(logDir, "*.log"))
+	}
 	cmd := exec.Command(parts[0], parts[1:]...)
 	env := os.Environ()
 
@@ -153,7 +157,6 @@ func buildCmd(svc *Service) *exec.Cmd {
 		}
 	}
 
-	logDir := logsDir()
 	env = append(env, fmt.Sprintf("RALPH_LOGS_DIR=%s", logDir))
 
 	cmd.Env = env
