@@ -32,6 +32,7 @@ func (s ServiceState) String() string {
 type Service struct {
 	Name            string
 	PortEnvVar      string // empty if no HTTP port
+	HostEnvVar      string // empty if no HTTP host
 	ProxyPath       string // optional
 	DefaultRoute    bool
 	Command         string
@@ -53,6 +54,7 @@ var registry = []*Service{
 	{
 		Name:            "ralph-plans",
 		PortEnvVar:      "RALPH_PLANS_PORT",
+		HostEnvVar:      "RALPH_PLANS_HOST",
 		Command:         "ralph-plans",
 		ShutdownTimeout: 10 * time.Second,
 		Noop:            false,
@@ -60,6 +62,7 @@ var registry = []*Service{
 	{
 		Name:            "ralph-shows",
 		PortEnvVar:      "RALPH_SHOWS_PORT",
+		HostEnvVar:      "RALPH_SHOWS_HOST",
 		DefaultRoute:    true,
 		Command:         "deno run -A dev.ts",
 		WorkDir:         "~/.local/share/ralph-shows",
@@ -75,6 +78,7 @@ var registry = []*Service{
 	{
 		Name:            "ralph-logs",
 		PortEnvVar:      "RALPH_LOGS_PORT",
+		HostEnvVar:      "RALPH_LOGS_HOST",
 		Command:         "ralph-logs",
 		ShutdownTimeout: 10 * time.Second,
 		Noop:            true,
@@ -82,6 +86,7 @@ var registry = []*Service{
 	{
 		Name:            "ralph-counts",
 		PortEnvVar:      "RALPH_COUNTS_PORT",
+		HostEnvVar:      "RALPH_COUNTS_HOST",
 		Command:         "ralph-counts",
 		ShutdownTimeout: 10 * time.Second,
 		Noop:            true,
@@ -119,9 +124,26 @@ func buildCmd(svc *Service) *exec.Cmd {
 	parts := strings.Fields(svc.Command)
 	cmd := exec.Command(parts[0], parts[1:]...)
 	env := os.Environ()
+
+	host := os.Getenv("RALPH_HERDS_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+
 	if svc.PortEnvVar != "" {
 		env = append(env, fmt.Sprintf("%s=%d", svc.PortEnvVar, svc.AssignedPort))
 	}
+	if svc.HostEnvVar != "" {
+		env = append(env, fmt.Sprintf("%s=%s", svc.HostEnvVar, host))
+	}
+
+	// ralph-plans uses RALPH_SHOWS_PORT for CORS configuration
+	if svc.Name == "ralph-plans" {
+		if shows := findService("ralph-shows"); shows != nil && shows.AssignedPort != 0 {
+			env = append(env, fmt.Sprintf("RALPH_SHOWS_PORT=%d", shows.AssignedPort))
+		}
+	}
+
 	cmd.Env = env
 	if svc.WorkDir != "" {
 		cmd.Dir = svc.WorkDir
@@ -269,7 +291,11 @@ func cmdStart(name string) {
 	}
 	if svc.Noop {
 		if svc.PortEnvVar != "" {
-			fmt.Printf("[noop] would start %s: %s=%d %s", svc.Name, svc.PortEnvVar, svc.AssignedPort, svc.Command)
+			host := os.Getenv("RALPH_HERDS_HOST")
+			if host == "" {
+				host = "localhost"
+			}
+			fmt.Printf("[noop] would start %s: %s=%s %s=%d %s", svc.Name, svc.HostEnvVar, host, svc.PortEnvVar, svc.AssignedPort, svc.Command)
 		} else {
 			fmt.Printf("[noop] would start %s: %s", svc.Name, svc.Command)
 		}
