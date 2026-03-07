@@ -410,6 +410,7 @@ func cmdHelp() {
 	fmt.Println("  stop <name>       stop a service")
 	fmt.Println("  restart <name>    restart a service")
 	fmt.Println("  status            show service states and ports")
+	fmt.Println("  clear             clear the terminal screen")
 	fmt.Println("  help              show this help")
 	fmt.Println("  quit              stop all services and exit")
 }
@@ -440,6 +441,8 @@ func handleLine(line string) bool {
 	switch cmd {
 	case "help":
 		cmdHelp()
+	case "clear":
+		fmt.Print("\033[2J\033[H")
 	case "status":
 		cmdStatus()
 	case "quit":
