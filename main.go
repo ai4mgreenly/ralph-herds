@@ -68,7 +68,7 @@ var registry = []*Service{
 		Command:         "deno run -A dev.ts",
 		WorkDir:         "~/.local/share/ralph-shows",
 		ShutdownTimeout: 10 * time.Second,
-		Noop:            true,
+		Noop:            false,
 	},
 	{
 		Name:            "ralph-runs",
@@ -80,7 +80,7 @@ var registry = []*Service{
 		Name:            "ralph-logs",
 		PortEnvVar:      "RALPH_LOGS_PORT",
 		HostEnvVar:      "RALPH_LOGS_HOST",
-		Command:         "/home/ai4mgreenly/projects/ralph-logs/ralph-logs",
+		Command:         "ralph-logs",
 		ShutdownTimeout: 10 * time.Second,
 		Noop:            false,
 	},
@@ -161,7 +161,13 @@ func buildCmd(svc *Service) *exec.Cmd {
 
 	cmd.Env = env
 	if svc.WorkDir != "" {
-		cmd.Dir = svc.WorkDir
+		workDir := svc.WorkDir
+		if strings.HasPrefix(workDir, "~/") {
+			if home, err := os.UserHomeDir(); err == nil {
+				workDir = filepath.Join(home, workDir[2:])
+			}
+		}
+		cmd.Dir = workDir
 	}
 
 	if err := os.MkdirAll(logDir, 0755); err != nil {
