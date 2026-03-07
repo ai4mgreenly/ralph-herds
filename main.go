@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -120,6 +121,18 @@ func findService(name string) *Service {
 	return nil
 }
 
+func logsDir() string {
+	dir := os.Getenv("RALPH_LOGS_DIR")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			home = "."
+		}
+		dir = filepath.Join(home, ".local", "state", "ralph", "logs")
+	}
+	return dir
+}
+
 func buildCmd(svc *Service) *exec.Cmd {
 	parts := strings.Fields(svc.Command)
 	cmd := exec.Command(parts[0], parts[1:]...)
@@ -140,12 +153,32 @@ func buildCmd(svc *Service) *exec.Cmd {
 		}
 	}
 
+	logDir := logsDir()
+	env = append(env, fmt.Sprintf("RALPH_LOGS_DIR=%s", logDir))
+
 	cmd.Env = env
 	if svc.WorkDir != "" {
 		cmd.Dir = svc.WorkDir
 	}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		fmt.Printf("warning: could not create log dir %s: %v\n", logDir, err)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd
+	}
+
+	logPath := filepath.Join(logDir, svc.Name+".log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		fmt.Printf("warning: could not open log file %s: %v\n", logPath, err)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd
+	}
+
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
 	return cmd
 }
 
