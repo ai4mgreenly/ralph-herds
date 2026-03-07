@@ -130,17 +130,13 @@ func buildCmd(svc *Service) *exec.Cmd {
 		host = "localhost"
 	}
 
-	if svc.PortEnvVar != "" {
-		env = append(env, fmt.Sprintf("%s=%d", svc.PortEnvVar, svc.AssignedPort))
-	}
-	if svc.HostEnvVar != "" {
-		env = append(env, fmt.Sprintf("%s=%s", svc.HostEnvVar, host))
-	}
-
-	// ralph-plans uses RALPH_SHOWS_PORT for CORS configuration
-	if svc.Name == "ralph-plans" {
-		if shows := findService("ralph-shows"); shows != nil && shows.AssignedPort != 0 {
-			env = append(env, fmt.Sprintf("RALPH_SHOWS_PORT=%d", shows.AssignedPort))
+	// Inject host/port env vars for all services in the registry.
+	for _, s := range registry {
+		if s.PortEnvVar != "" && s.AssignedPort != 0 {
+			env = append(env, fmt.Sprintf("%s=%d", s.PortEnvVar, s.AssignedPort))
+		}
+		if s.HostEnvVar != "" {
+			env = append(env, fmt.Sprintf("%s=%s", s.HostEnvVar, host))
 		}
 	}
 
