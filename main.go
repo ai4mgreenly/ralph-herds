@@ -385,9 +385,18 @@ func cmdStopAll() {
 	}
 }
 
+func statusHost() string {
+	host := os.Getenv("RALPH_HERDS_HOST")
+	if host == "" || host == "localhost" {
+		return "127.0.0.1"
+	}
+	return host
+}
+
 func cmdStatus() {
-	fmt.Printf("%-16s %-10s %s\n", "SERVICE", "STATE", "PORT")
+	fmt.Printf("%-16s %-10s %s\n", "SERVICE", "STATE", "URL")
 	fmt.Println(strings.Repeat("-", 40))
+	host := statusHost()
 	for _, svc := range registry {
 		svc.mu.Lock()
 		state := svc.State
@@ -396,17 +405,17 @@ func cmdStatus() {
 		noop := svc.Noop
 		svc.mu.Unlock()
 
-		portStr := "-"
+		urlStr := "-"
 		if port != 0 {
-			portStr = strconv.Itoa(port)
+			urlStr = fmt.Sprintf("http://%s:%d/", host, port)
 		}
 
 		if noop {
-			fmt.Printf("%-16s %-10s %s\n", svc.Name, "noop", portStr)
+			fmt.Printf("%-16s %-10s %s\n", svc.Name, "noop", urlStr)
 		} else if state == StateRunning {
-			fmt.Printf("%-16s %-10s %s (PID %d)\n", svc.Name, state, portStr, pid)
+			fmt.Printf("%-16s %-10s %s (PID %d)\n", svc.Name, state, urlStr, pid)
 		} else {
-			fmt.Printf("%-16s %-10s %s\n", svc.Name, state, portStr)
+			fmt.Printf("%-16s %-10s %s\n", svc.Name, state, urlStr)
 		}
 	}
 }
