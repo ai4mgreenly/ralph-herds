@@ -95,7 +95,6 @@ var registry = []*Service{
 		ProxyPath:       "api/counts",
 		Command:         "ralph-counts",
 		ShutdownTimeout: 10 * time.Second,
-		Noop:            true,
 	},
 }
 
