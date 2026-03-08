@@ -144,7 +144,7 @@ func buildCmd(svc *Service) *exec.Cmd {
 
 	host := os.Getenv("RALPH_HERDS_HOST")
 	if host == "" {
-		host = "localhost"
+		host = "127.0.0.1"
 	}
 
 	// Inject host/port env vars for all services in the registry.
@@ -331,7 +331,7 @@ func cmdStart(name string) {
 		if svc.PortEnvVar != "" {
 			host := os.Getenv("RALPH_HERDS_HOST")
 			if host == "" {
-				host = "localhost"
+				host = "127.0.0.1"
 			}
 			fmt.Printf("[noop] would start %s: %s=%s %s=%d %s", svc.Name, svc.HostEnvVar, host, svc.PortEnvVar, svc.AssignedPort, svc.Command)
 		} else {
@@ -387,7 +387,7 @@ func cmdStopAll() {
 
 func statusHost() string {
 	host := os.Getenv("RALPH_HERDS_HOST")
-	if host == "" || host == "localhost" {
+	if host == "" {
 		return "127.0.0.1"
 	}
 	return host
