@@ -18,7 +18,8 @@ Part of a multi-service system:
 
 | Service | Language | Port | Purpose |
 |---------|----------|------|---------|
-| **ralph-plans** | Go + SQLite | 5001 | Goal storage and state machine |
+| **ralph-remembers** | Go | 5001 | Memory and context storage |
+| **ralph-plans** | Go + SQLite | 5002 | Goal storage and state machine |
 | **ralph-shows** | Deno + Preact | 5000 | Web UI dashboard |
 | **ralph-runs** | Ruby | 5002 | Orchestrator + agent loop |
 | **ralph-logs** | Go | 5003 | Real-time log streaming |
