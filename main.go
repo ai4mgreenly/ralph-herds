@@ -67,20 +67,6 @@ var registry = []*Service{
 		Noop:            false,
 	},
 	{
-		Name:            "ralph-shows",
-		PortEnvVar:      "RALPH_SHOWS_PORT",
-		HostEnvVar:      "RALPH_SHOWS_HOST",
-		DefaultRoute:    true,
-		Command:         "ralph-shows",
-		ShutdownTimeout: 10 * time.Second,
-		Noop:            false,
-	},
-	{
-		Name:            "ralph-runs",
-		Command:         "ralph-runs --max=3",
-		ShutdownTimeout: 2 * time.Minute,
-	},
-	{
 		Name:            "ralph-logs",
 		PortEnvVar:      "RALPH_LOGS_PORT",
 		HostEnvVar:      "RALPH_LOGS_HOST",
@@ -96,6 +82,20 @@ var registry = []*Service{
 		ProxyPath:       "api/counts",
 		Command:         "ralph-counts",
 		ShutdownTimeout: 10 * time.Second,
+	},
+	{
+		Name:            "ralph-shows",
+		PortEnvVar:      "RALPH_SHOWS_PORT",
+		HostEnvVar:      "RALPH_SHOWS_HOST",
+		DefaultRoute:    true,
+		Command:         "ralph-shows",
+		ShutdownTimeout: 10 * time.Second,
+		Noop:            false,
+	},
+	{
+		Name:            "ralph-runs",
+		Command:         "ralph-runs --max=3",
+		ShutdownTimeout: 2 * time.Minute,
 	},
 }
 
@@ -392,8 +392,8 @@ func cmdStartAll() {
 }
 
 func cmdStopAll() {
-	for _, svc := range registry {
-		cmdStop(svc.Name)
+	for i := len(registry) - 1; i >= 0; i-- {
+		cmdStop(registry[i].Name)
 	}
 }
 
@@ -446,7 +446,8 @@ func cmdHelp() {
 }
 
 func stopAllRunning() {
-	for _, svc := range registry {
+	for i := len(registry) - 1; i >= 0; i-- {
+		svc := registry[i]
 		if svc.Noop {
 			continue
 		}
