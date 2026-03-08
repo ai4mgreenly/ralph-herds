@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -508,6 +510,56 @@ func handleLine(line string) bool {
 	return true
 }
 
+func isWebSocketUpgrade(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket") &&
+		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade")
+}
+
+func proxyWebSocket(w http.ResponseWriter, r *http.Request, upstreamHost string) {
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "WebSocket not supported", http.StatusInternalServerError)
+		return
+	}
+	clientConn, _, err := hj.Hijack()
+	if err != nil {
+		return
+	}
+	defer clientConn.Close()
+
+	upstreamConn, err := net.Dial("tcp", upstreamHost)
+	if err != nil {
+		fmt.Fprintf(clientConn, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
+		return
+	}
+	defer upstreamConn.Close()
+
+	if err := r.Write(upstreamConn); err != nil {
+		return
+	}
+
+	done := make(chan struct{}, 2)
+	go func() {
+		io.Copy(upstreamConn, clientConn)
+		done <- struct{}{}
+	}()
+	go func() {
+		io.Copy(clientConn, upstreamConn)
+		done <- struct{}{}
+	}()
+	<-done
+}
+
+func makeProxyHandler(proxy http.Handler, upstreamHost string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isWebSocketUpgrade(r) {
+			proxyWebSocket(w, r, upstreamHost)
+			return
+		}
+		proxy.ServeHTTP(w, r)
+	})
+}
+
 func startProxy() {
 	host := os.Getenv("RALPH_HERDS_HOST")
 	if host == "" {
@@ -537,11 +589,12 @@ func startProxy() {
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 			http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		}
+		handler := makeProxyHandler(proxy, upstream.Host)
 		if svc.DefaultRoute {
-			defaultHandler = proxy
+			defaultHandler = handler
 		} else if svc.ProxyPath != "" {
 			prefix := "/" + svc.ProxyPath
-			mux.Handle(prefix+"/", http.StripPrefix(prefix, proxy))
+			mux.Handle(prefix+"/", http.StripPrefix(prefix, handler))
 		}
 	}
 
