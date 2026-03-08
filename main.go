@@ -534,9 +534,23 @@ func proxyWebSocket(w http.ResponseWriter, r *http.Request, upstreamHost string)
 	}
 	defer upstreamConn.Close()
 
-	if err := r.Write(upstreamConn); err != nil {
-		return
+	// Manually write the request line and headers to preserve hop-by-hop
+	// headers (Connection, Upgrade) that r.Write() would strip.
+	path := r.URL.Path
+	if r.URL.RawQuery != "" {
+		path += "?" + r.URL.RawQuery
 	}
+	if path == "" {
+		path = "/"
+	}
+	fmt.Fprintf(upstreamConn, "%s %s HTTP/1.1\r\n", r.Method, path)
+	fmt.Fprintf(upstreamConn, "Host: %s\r\n", upstreamHost)
+	for key, vals := range r.Header {
+		for _, val := range vals {
+			fmt.Fprintf(upstreamConn, "%s: %s\r\n", key, val)
+		}
+	}
+	fmt.Fprintf(upstreamConn, "\r\n")
 
 	done := make(chan struct{}, 2)
 	go func() {
