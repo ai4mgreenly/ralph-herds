@@ -3,6 +3,9 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -56,6 +59,7 @@ var registry = []*Service{
 		Name:            "ralph-plans",
 		PortEnvVar:      "RALPH_PLANS_PORT",
 		HostEnvVar:      "RALPH_PLANS_HOST",
+		ProxyPath:       "api/plans",
 		Command:         "ralph-plans",
 		ShutdownTimeout: 10 * time.Second,
 		Noop:            false,
@@ -80,6 +84,7 @@ var registry = []*Service{
 		Name:            "ralph-logs",
 		PortEnvVar:      "RALPH_LOGS_PORT",
 		HostEnvVar:      "RALPH_LOGS_HOST",
+		ProxyPath:       "api/logs",
 		Command:         "ralph-logs",
 		ShutdownTimeout: 10 * time.Second,
 		Noop:            false,
@@ -88,6 +93,7 @@ var registry = []*Service{
 		Name:            "ralph-counts",
 		PortEnvVar:      "RALPH_COUNTS_PORT",
 		HostEnvVar:      "RALPH_COUNTS_HOST",
+		ProxyPath:       "api/counts",
 		Command:         "ralph-counts",
 		ShutdownTimeout: 10 * time.Second,
 		Noop:            true,
@@ -498,8 +504,58 @@ func handleLine(line string) bool {
 	return true
 }
 
+func startProxy() {
+	host := os.Getenv("RALPH_HERDS_HOST")
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	portStr := os.Getenv("RALPH_HERDS_PORT")
+	proxyPort := 6000
+	if portStr != "" {
+		if n, err := strconv.Atoi(portStr); err == nil {
+			proxyPort = n
+		}
+	}
+	addr := fmt.Sprintf("%s:%d", host, proxyPort)
+
+	mux := http.NewServeMux()
+
+	var defaultHandler http.Handler
+	for _, svc := range registry {
+		if svc.AssignedPort == 0 {
+			continue
+		}
+		upstream, err := url.Parse(fmt.Sprintf("http://%s:%d", host, svc.AssignedPort))
+		if err != nil {
+			continue
+		}
+		proxy := httputil.NewSingleHostReverseProxy(upstream)
+		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+			http.Error(w, "Bad Gateway", http.StatusBadGateway)
+		}
+		if svc.DefaultRoute {
+			defaultHandler = proxy
+		} else if svc.ProxyPath != "" {
+			prefix := "/" + svc.ProxyPath
+			mux.Handle(prefix+"/", http.StripPrefix(prefix, proxy))
+		}
+	}
+
+	if defaultHandler != nil {
+		mux.Handle("/", defaultHandler)
+	}
+
+	fmt.Printf("proxy listening on http://%s/\n", addr)
+	go func() {
+		if err := http.ListenAndServe(addr, mux); err != nil {
+			fmt.Printf("proxy error: %v\n", err)
+		}
+	}()
+}
+
 func main() {
 	allocatePorts()
+	startProxy()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
