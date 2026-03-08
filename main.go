@@ -141,6 +141,7 @@ func buildCmd(svc *Service) *exec.Cmd {
 	logDir := logsDir()
 	if svc.Name == "ralph-logs" {
 		parts = append(parts, filepath.Join(logDir, "*.log"))
+		parts = append(parts, filepath.Join(logDir, "../goals/*/ralph.log"))
 	}
 	cmd := exec.Command(parts[0], parts[1:]...)
 	env := os.Environ()
