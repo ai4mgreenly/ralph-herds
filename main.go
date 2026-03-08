@@ -75,7 +75,7 @@ var registry = []*Service{
 	},
 	{
 		Name:            "ralph-runs",
-		Command:         "ralph-runs",
+		Command:         "ralph-runs --max=3",
 		ShutdownTimeout: 2 * time.Minute,
 	},
 	{
