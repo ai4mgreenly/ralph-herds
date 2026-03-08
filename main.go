@@ -161,6 +161,12 @@ func buildCmd(svc *Service) *exec.Cmd {
 		}
 	}
 
+	herdsPort := os.Getenv("RALPH_HERDS_PORT")
+	if herdsPort == "" {
+		herdsPort = "8000"
+	}
+	env = append(env, fmt.Sprintf("RALPH_HERDS_HOST=%s", host))
+	env = append(env, fmt.Sprintf("RALPH_HERDS_PORT=%s", herdsPort))
 	env = append(env, fmt.Sprintf("RALPH_LOGS_DIR=%s", logDir))
 
 	cmd.Env = env
