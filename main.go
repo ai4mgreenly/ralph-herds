@@ -414,9 +414,17 @@ func statusHost() string {
 }
 
 func cmdStatus() {
-	fmt.Printf("%-16s %-10s %s\n", "SERVICE", "STATE", "URL")
-	fmt.Println(strings.Repeat("-", 40))
 	host := statusHost()
+	basePortStr := os.Getenv("RALPH_HERDS_PORT")
+	basePort := 8000
+	if basePortStr != "" {
+		if n, err := strconv.Atoi(basePortStr); err == nil {
+			basePort = n
+		}
+	}
+
+	fmt.Printf("%-16s %-10s %-8s %-6s %s\n", "SERVICE", "STATE", "PID", "PORT", "URL")
+	fmt.Println(strings.Repeat("-", 60))
 	for _, svc := range registry {
 		svc.mu.Lock()
 		state := svc.State
@@ -425,18 +433,29 @@ func cmdStatus() {
 		noop := svc.Noop
 		svc.mu.Unlock()
 
-		urlStr := "-"
-		if port != 0 {
-			urlStr = fmt.Sprintf("http://%s:%d/", host, port)
+		stateStr := state.String()
+		if noop {
+			stateStr = "noop"
 		}
 
-		if noop {
-			fmt.Printf("%-16s %-10s %s\n", svc.Name, "noop", urlStr)
-		} else if state == StateRunning {
-			fmt.Printf("%-16s %-10s %s (PID %d)\n", svc.Name, state, urlStr, pid)
-		} else {
-			fmt.Printf("%-16s %-10s %s\n", svc.Name, state, urlStr)
+		pidStr := "-"
+		if state == StateRunning && pid != 0 {
+			pidStr = strconv.Itoa(pid)
 		}
+
+		portStr := "-"
+		if port != 0 {
+			portStr = strconv.Itoa(port)
+		}
+
+		urlStr := "-"
+		if svc.DefaultRoute {
+			urlStr = fmt.Sprintf("http://%s:%d/", host, basePort)
+		} else if svc.ProxyPath != "" {
+			urlStr = fmt.Sprintf("http://%s:%d/%s/", host, basePort, svc.ProxyPath)
+		}
+
+		fmt.Printf("%-16s %-10s %-8s %-6s %s\n", svc.Name, stateStr, pidStr, portStr, urlStr)
 	}
 }
 
