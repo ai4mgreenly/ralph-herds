@@ -510,7 +510,7 @@ func startProxy() {
 		host = "127.0.0.1"
 	}
 	portStr := os.Getenv("RALPH_HERDS_PORT")
-	proxyPort := 6000
+	proxyPort := 8000
 	if portStr != "" {
 		if n, err := strconv.Atoi(portStr); err == nil {
 			proxyPort = n
