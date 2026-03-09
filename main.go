@@ -39,7 +39,6 @@ type Service struct {
 	Name            string
 	PortEnvVar      string // empty if no HTTP port
 	HostEnvVar      string // empty if no HTTP host
-	ProxyPath       string // optional
 	DefaultRoute    bool
 	Command         string
 	WorkDir         string // optional
@@ -61,7 +60,6 @@ var registry = []*Service{
 		Name:            "ralph-remembers",
 		PortEnvVar:      "RALPH_REMEMBERS_PORT",
 		HostEnvVar:      "RALPH_REMEMBERS_HOST",
-		ProxyPath:       "api/remembers",
 		Command:         "ralph-remembers",
 		ShutdownTimeout: 10 * time.Second,
 	},
@@ -69,7 +67,6 @@ var registry = []*Service{
 		Name:            "ralph-plans",
 		PortEnvVar:      "RALPH_PLANS_PORT",
 		HostEnvVar:      "RALPH_PLANS_HOST",
-		ProxyPath:       "api/plans",
 		Command:         "ralph-plans",
 		ShutdownTimeout: 10 * time.Second,
 		Noop:            false,
@@ -78,7 +75,6 @@ var registry = []*Service{
 		Name:            "ralph-logs",
 		PortEnvVar:      "RALPH_LOGS_PORT",
 		HostEnvVar:      "RALPH_LOGS_HOST",
-		ProxyPath:       "api/logs",
 		Command:         "ralph-logs",
 		ShutdownTimeout: 10 * time.Second,
 		Noop:            false,
@@ -87,7 +83,6 @@ var registry = []*Service{
 		Name:            "ralph-counts",
 		PortEnvVar:      "RALPH_COUNTS_PORT",
 		HostEnvVar:      "RALPH_COUNTS_HOST",
-		ProxyPath:       "api/counts",
 		Command:         "ralph-counts",
 		ShutdownTimeout: 10 * time.Second,
 	},
@@ -161,22 +156,23 @@ func buildCmd(svc *Service) *exec.Cmd {
 		host = "127.0.0.1"
 	}
 
-	// Inject host/port env vars for all services in the registry.
-	for _, s := range registry {
-		if s.PortEnvVar != "" && s.AssignedPort != 0 {
-			env = append(env, fmt.Sprintf("%s=%d", s.PortEnvVar, s.AssignedPort))
-		}
-		if s.HostEnvVar != "" {
-			env = append(env, fmt.Sprintf("%s=%s", s.HostEnvVar, host))
-		}
-	}
-
 	herdsPort := os.Getenv("RALPH_HERDS_PORT")
 	if herdsPort == "" {
 		herdsPort = "8000"
 	}
-	env = append(env, fmt.Sprintf("RALPH_HERDS_HOST=%s", host))
-	env = append(env, fmt.Sprintf("RALPH_HERDS_PORT=%s", herdsPort))
+
+	// Inject each service's own host/port for binding, plus URL env vars
+	// for all services so they can reach each other by subdomain.
+	for _, s := range registry {
+		if s.PortEnvVar != "" && s.AssignedPort != 0 {
+			env = append(env, fmt.Sprintf("%s=%d", s.PortEnvVar, s.AssignedPort))
+			env = append(env, fmt.Sprintf("%s=%s", s.HostEnvVar, host))
+			urlEnvVar := strings.Replace(s.PortEnvVar, "_PORT", "_URL", 1)
+			env = append(env, fmt.Sprintf("%s=http://%s.localhost:%s", urlEnvVar, s.Name, herdsPort))
+		}
+	}
+
+	env = append(env, fmt.Sprintf("RALPH_HERDS_URL=http://localhost:%s", herdsPort))
 	env = append(env, fmt.Sprintf("RALPH_LOGS_DIR=%s", logDir))
 
 	cmd.Env = env
@@ -349,11 +345,11 @@ func cmdStart(name string) {
 	}
 	if svc.Noop {
 		if svc.PortEnvVar != "" {
-			host := os.Getenv("RALPH_HERDS_HOST")
-			if host == "" {
-				host = "127.0.0.1"
+			herdsPort := os.Getenv("RALPH_HERDS_PORT")
+			if herdsPort == "" {
+				herdsPort = "8000"
 			}
-			fmt.Printf("[noop] would start %s: %s=%s %s=%d %s", svc.Name, svc.HostEnvVar, host, svc.PortEnvVar, svc.AssignedPort, svc.Command)
+			fmt.Printf("[noop] would start %s: port=%d url=http://%s.localhost:%s %s", svc.Name, svc.AssignedPort, svc.Name, herdsPort, svc.Command)
 		} else {
 			fmt.Printf("[noop] would start %s: %s", svc.Name, svc.Command)
 		}
@@ -405,16 +401,7 @@ func cmdStopAll() {
 	}
 }
 
-func statusHost() string {
-	host := os.Getenv("RALPH_HERDS_HOST")
-	if host == "" {
-		return "127.0.0.1"
-	}
-	return host
-}
-
 func cmdStatus() {
-	host := statusHost()
 	basePortStr := os.Getenv("RALPH_HERDS_PORT")
 	basePort := 8000
 	if basePortStr != "" {
@@ -450,9 +437,9 @@ func cmdStatus() {
 
 		urlStr := "-"
 		if svc.DefaultRoute {
-			urlStr = fmt.Sprintf("http://%s:%d/", host, basePort)
-		} else if svc.ProxyPath != "" {
-			urlStr = fmt.Sprintf("http://%s:%d/%s/", host, basePort, svc.ProxyPath)
+			urlStr = fmt.Sprintf("http://localhost:%d/", basePort)
+		} else if svc.PortEnvVar != "" {
+			urlStr = fmt.Sprintf("http://%s.localhost:%d/", svc.Name, basePort)
 		}
 
 		fmt.Printf("%-16s %-10s %-8s %-6s %s\n", svc.Name, stateStr, pidStr, portStr, urlStr)
@@ -616,8 +603,8 @@ func startProxy() {
 	}
 	addr := fmt.Sprintf("%s:%d", host, proxyPort)
 
-	mux := http.NewServeMux()
-
+	// Build a map of subdomain -> handler for Host-header routing.
+	handlers := make(map[string]http.Handler)
 	var defaultHandler http.Handler
 	for _, svc := range registry {
 		if svc.AssignedPort == 0 {
@@ -634,19 +621,30 @@ func startProxy() {
 		handler := makeProxyHandler(proxy, upstream.Host)
 		if svc.DefaultRoute {
 			defaultHandler = handler
-		} else if svc.ProxyPath != "" {
-			prefix := "/" + svc.ProxyPath
-			mux.Handle(prefix+"/", http.StripPrefix(prefix, handler))
 		}
+		// Route by subdomain: ralph-plans.localhost -> ralph-plans backend
+		handlers[svc.Name+".localhost"] = handler
 	}
 
-	if defaultHandler != nil {
-		mux.Handle("/", defaultHandler)
-	}
+	mainHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hostname := r.Host
+		if h, _, err := net.SplitHostPort(hostname); err == nil {
+			hostname = h
+		}
+		if handler, ok := handlers[hostname]; ok {
+			handler.ServeHTTP(w, r)
+			return
+		}
+		if defaultHandler != nil {
+			defaultHandler.ServeHTTP(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
 
-	fmt.Printf("proxy listening on http://%s/\n", addr)
+	fmt.Printf("proxy listening on http://localhost:%d/\n", proxyPort)
 	go func() {
-		if err := http.ListenAndServe(addr, mux); err != nil {
+		if err := http.ListenAndServe(addr, mainHandler); err != nil {
 			fmt.Printf("proxy error: %v\n", err)
 		}
 	}()
