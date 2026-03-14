@@ -153,7 +153,7 @@ func buildCmd(svc *Service) *exec.Cmd {
 
 	host := os.Getenv("RALPH_HERDS_HOST")
 	if host == "" {
-		host = "127.0.0.1"
+		host = "localhost"
 	}
 
 	herdsPort := os.Getenv("RALPH_HERDS_PORT")
@@ -592,7 +592,7 @@ func makeProxyHandler(proxy http.Handler, upstreamHost string) http.Handler {
 func startProxy() {
 	host := os.Getenv("RALPH_HERDS_HOST")
 	if host == "" {
-		host = "127.0.0.1"
+		host = "localhost"
 	}
 	portStr := os.Getenv("RALPH_HERDS_PORT")
 	proxyPort := 8000
