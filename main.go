@@ -57,13 +57,6 @@ type Service struct {
 
 var registry = []*Service{
 	{
-		Name:            "ralph-remembers",
-		PortEnvVar:      "RALPH_REMEMBERS_PORT",
-		HostEnvVar:      "RALPH_REMEMBERS_HOST",
-		Command:         "ralph-remembers",
-		ShutdownTimeout: 10 * time.Second,
-	},
-	{
 		Name:            "ralph-plans",
 		PortEnvVar:      "RALPH_PLANS_PORT",
 		HostEnvVar:      "RALPH_PLANS_HOST",
